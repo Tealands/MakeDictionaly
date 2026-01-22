@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>マイ・ディクショナリー</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans JP', sans-serif;
+            margin: 24px;
+            background: #f0f2f5;
+            color: #333;
+        }
+
+        .wrap {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+        }
+
+        h1 {
+            margin: 0 0 20px;
+            font-size: 24px;
+            color: #1e3a8a;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* 入力エリア */
+        .input-section {
+            background: #f8fafc;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .input-row {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        input[type=text],
+        textarea {
+            padding: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 16px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        textarea {
+            height: 80px;
+            resize: vertical;
+        }
+
+        button {
+            padding: 10px 20px;
+            border-radius: 6px;
+            border: 0;
+            background: #2563eb;
+            color: #fff;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        .muted {
+            background: #64748b;
+        }
+
+        .muted:hover {
+            background: #475569;
+        }
+
+        /* 辞書リスト */
+        ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .entry-item {
+            padding: 16px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            transition: background 0.2s;
+        }
+
+        .entry-item:hover {
+            background: #fbfcfe;
+        }
+
+        .entry-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .word {
+            font-size: 18px;
+            font-weight: bold;
+            color: #1e293b;
+        }
+
+        .description {
+            font-size: 14px;
+            color: #475569;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            margin-top: 4px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        .footer-tools {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px dashed #e2e8f0;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .count-badge {
+            font-size: 14px;
+            color: #64748b;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <h1>📖 マイ・ディクショナリー</h1>
+
+        <div class="input-section">
+            <div class="input-row">
+                <input id="word-input" type="text" placeholder="登録する単語を入力..." />
+                <textarea id="desc-input" placeholder="その単語の説明を入力..."></textarea>
+                <button id="add-btn">辞書に追加（自動ソート）</button>
+            </div>
+        </div>
+
+        <div id="entry-count" class="count-badge">登録件数: 0件</div>
+        <ul id="dictionary-list"></ul>
+
+        <div class="footer-tools">
+            <button id="export-btn" class="muted">JSON出力</button>
+            <button id="import-btn" class="muted">JSON読込</button>
+            <input id="file-input" type="file" accept="application/json" style="display:none" />
+        </div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'my_dictionary_v1';
+        let dictionary = [];
+
+        const wordInput = document.getElementById('word-input');
+        const descInput = document.getElementById('desc-input');
+        const addBtn = document.getElementById('add-btn');
+        const listEl = document.getElementById('dictionary-list');
+        const countEl = document.getElementById('entry-count');
+
+        // 保存と読み込み
+        function save() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(dictionary));
+        }
+
+        function load() {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) {
+                try {
+                    dictionary = JSON.parse(raw);
+                } catch {
+                    dictionary = [];
+                }
+            }
+            render();
+        }
+
+        // 描画
+        function render() {
+            listEl.innerHTML = '';
+            
+            // 辞書順にソート（日本語の読みやアルファベットを考慮）
+            dictionary.sort((a, b) => a.word.localeCompare(b.word, 'ja'));
+
+            dictionary.forEach((entry, index) => {
+                const li = document.createElement('li');
+                li.className = 'entry-item';
+
+                li.innerHTML = `
+                    <div class="entry-header">
+                        <span class="word">${escapeHtml(entry.word)}</span>
+                        <div class="controls">
+                            <button class="muted btn-small" onclick="editEntry(${index})">編集</button>
+                            <button class="muted btn-small" style="background:#ef4444" onclick="deleteEntry(${index})">削除</button>
+                        </div>
+                    </div>
+                    <div class="description">${escapeHtml(entry.description)}</div>
+                `;
+                listEl.appendChild(li);
+            });
+
+            countEl.textContent = `登録件数: ${dictionary.length}件`;
+        }
+
+        // エスケープ処理（セキュリティ対策）
+        function escapeHtml(str) {
+            return str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+        }
+
+        // 追加
+        addBtn.addEventListener('click', () => {
+            const word = wordInput.value.trim();
+            const description = descInput.value.trim();
+
+            if (!word) return alert('単語を入力してください');
+
+            dictionary.push({ word, description, createdAt: new Date().toISOString() });
+            wordInput.value = '';
+            descInput.value = '';
+            save();
+            render();
+        });
+
+        // 削除
+        window.deleteEntry = (index) => {
+            if (confirm(`「${dictionary[index].word}」を削除しますか？`)) {
+                dictionary.splice(index, 1);
+                save();
+                render();
+            }
+        };
+
+        // 編集
+        window.editEntry = (index) => {
+            const entry = dictionary[index];
+            const newWord = prompt('単語を編集', entry.word);
+            if (newWord === null) return;
+            
+            const newDesc = prompt('説明を編集', entry.description);
+            if (newDesc === null) return;
+
+            dictionary[index].word = newWord.trim() || entry.word;
+            dictionary[index].description = newDesc.trim();
+            save();
+            render();
+        };
+
+        // エクスポート/インポート（TODOアプリの機能を踏襲）
+        document.getElementById('export-btn').addEventListener('click', () => {
+            const blob = new Blob([JSON.stringify(dictionary, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'my_dictionary.json'; a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        document.getElementById('import-btn').addEventListener('click', () => document.getElementById('file-input').click());
+        document.getElementById('file-input').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            try {
+                const text = await file.text();
+                const data = JSON.parse(text);
+                if (Array.isArray(data)) {
+                    dictionary = confirm('既存のデータに追加しますか？（キャンセルで上書き）') ? dictionary.concat(data) : data;
+                    save(); render();
+                }
+            } catch (err) { alert('読み込み失敗'); }
+        });
+
+        load();
+    </script>
+</body>
+
+</html>
